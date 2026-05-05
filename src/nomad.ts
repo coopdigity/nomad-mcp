@@ -56,14 +56,23 @@ export class NomadClient {
     this.token = token;
   }
 
-  private async request(path: string): Promise<Response> {
+  private async request(
+    path: string,
+    opts: { method?: string; body?: unknown } = {},
+  ): Promise<Response> {
+    const { method = "GET", body } = opts;
+    const headers: Record<string, string> = { "X-Nomad-Token": this.token };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: { "X-Nomad-Token": this.token },
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Nomad ${res.status}: ${body.slice(0, 500)}`);
+      const text = await res.text().catch(() => "");
+      throw new Error(`Nomad ${res.status}: ${text.slice(0, 500)}`);
     }
 
     return res;
@@ -352,6 +361,46 @@ export class NomadClient {
     }
 
     return lines.join("\n");
+  }
+
+  async registerJobFromHcl(hcl: string): Promise<string> {
+    const parseRes = await this.request("/v1/jobs/parse", {
+      method: "POST",
+      body: { JobHCL: hcl, Canonicalize: true },
+    });
+    const job = (await parseRes.json()) as Record<string, unknown>;
+
+    const regRes = await this.request("/v1/jobs", {
+      method: "POST",
+      body: { Job: job },
+    });
+    const data = (await regRes.json()) as { EvalID?: string; JobModifyIndex?: number; Warnings?: string };
+
+    const lines = [
+      `Registered job: ${job.ID ?? "(unknown)"}`,
+      `EvalID: ${data.EvalID ?? "(none)"}`,
+      `JobModifyIndex: ${data.JobModifyIndex ?? "(none)"}`,
+    ];
+    if (data.Warnings) lines.push(`Warnings: ${data.Warnings}`);
+    return lines.join("\n");
+  }
+
+  async stopJob(jobId: string, purge = false): Promise<string> {
+    const qs = purge ? "?purge=true" : "";
+    const res = await this.request(`/v1/job/${encodeURIComponent(jobId)}${qs}`, {
+      method: "DELETE",
+    });
+    const data = (await res.json()) as { EvalID?: string };
+    return `Stopped${purge ? " and purged" : ""} ${jobId}. EvalID=${data.EvalID ?? "(none)"}`;
+  }
+
+  async restartAlloc(allocId: string, taskName?: string): Promise<string> {
+    const body = taskName ? { TaskName: taskName } : {};
+    await this.request(`/v1/client/allocation/${encodeURIComponent(allocId)}/restart`, {
+      method: "POST",
+      body,
+    });
+    return `Restart requested for alloc ${allocId.slice(0, 8)}${taskName ? ` (task=${taskName})` : ""}.`;
   }
 
   async getRaftPeers(): Promise<string> {

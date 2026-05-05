@@ -226,6 +226,59 @@ server.tool(
 );
 
 server.tool(
+  "register_job",
+  "Register (or update) a Nomad job from an HCL definition. Equivalent to `nomad job run`. Returns the EvalID and JobModifyIndex.",
+  {
+    hcl: z.string().describe("Full job HCL contents (the file's text, not a path)"),
+  },
+  async ({ hcl }) => {
+    try {
+      const result = await client.registerJobFromHcl(hcl);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "stop_job",
+  "Stop a Nomad job. With purge=true, also removes the job definition (equivalent to `nomad job stop -purge`).",
+  {
+    job_id: z.string().describe("Nomad job ID"),
+    purge: z.boolean().optional().default(false).describe("If true, also purge the job definition"),
+  },
+  async ({ job_id, purge }) => {
+    try {
+      const result = await client.stopJob(job_id, purge);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "restart_alloc",
+  "Restart a single allocation, optionally a specific task within it.",
+  {
+    alloc_id: z.string().describe("Allocation ID (full UUID)"),
+    task: z.string().optional().describe("Specific task name within the alloc; omit to restart all tasks"),
+  },
+  async ({ alloc_id, task }) => {
+    try {
+      const result = await client.restartAlloc(alloc_id, task);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
   "operator_raft_peers",
   "Show the current Nomad server raft configuration — which server is leader, voter status, raft protocol version.",
   {},
