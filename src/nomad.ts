@@ -372,7 +372,10 @@ export class NomadClient {
 
     const regRes = await this.request("/v1/jobs", {
       method: "POST",
-      body: { Job: job },
+      body: {
+        Job: job,
+        Submission: { Source: hcl, Format: "hcl2" },
+      },
     });
     const data = (await regRes.json()) as { EvalID?: string; JobModifyIndex?: number; Warnings?: string };
 

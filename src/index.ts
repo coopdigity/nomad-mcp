@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { NomadClient } from "./nomad.js";
 
@@ -227,13 +228,21 @@ server.tool(
 
 server.tool(
   "register_job",
-  "Register (or update) a Nomad job from an HCL definition. Equivalent to `nomad job run`. Returns the EvalID and JobModifyIndex.",
+  "Register (or update) a Nomad job from an HCL definition. Equivalent to `nomad job run`. Pass either `path` (preferred) or `hcl`. Original HCL is preserved as the job submission so `nomad job inspect` and the Nomad UI render the source HCL, not the canonicalized JSON.",
   {
-    hcl: z.string().describe("Full job HCL contents (the file's text, not a path)"),
+    path: z.string().optional().describe("Absolute path to the HCL file to register (preferred — keeps tool calls compact)"),
+    hcl: z.string().optional().describe("Full job HCL contents inline (use only if `path` is unavailable)"),
   },
-  async ({ hcl }) => {
+  async ({ path, hcl }) => {
     try {
-      const result = await client.registerJobFromHcl(hcl);
+      if (!path && !hcl) {
+        return { content: [{ type: "text", text: "Error: provide either `path` or `hcl`." }], isError: true };
+      }
+      if (path && hcl) {
+        return { content: [{ type: "text", text: "Error: provide only one of `path` or `hcl`, not both." }], isError: true };
+      }
+      const source = hcl ?? (await readFile(path!, "utf8"));
+      const result = await client.registerJobFromHcl(source);
       return { content: [{ type: "text", text: result }] };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

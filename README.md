@@ -14,7 +14,7 @@ Modeled on `jenkins-mcp`. TypeScript, stdio transport, official `@modelcontextpr
 - `get_alloc_logs` — stdout/stderr for a task; tail or head, configurable byte window.
 
 ### Jobs & allocations (write)
-- `register_job` — register/update a job from HCL contents.
+- `register_job` — register/update a job from HCL (path preferred, inline accepted). Preserves source HCL as submission so `nomad job inspect` and UI render HCL, not JSON.
 - `stop_job` — stop a job, optionally purge its definition.
 - `restart_alloc` — restart an allocation, or a single task within it.
 
