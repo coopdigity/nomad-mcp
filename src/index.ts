@@ -99,5 +99,146 @@ server.tool(
   },
 );
 
+server.tool(
+  "list_acl_policies",
+  "List Nomad ACL policies by name with their descriptions.",
+  {},
+  async () => {
+    try {
+      const result = await client.listAclPolicies();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "get_acl_policy",
+  "Get a single ACL policy by name, including its full HCL rules.",
+  {
+    name: z.string().describe("Policy name (e.g., 'Admin')"),
+  },
+  async ({ name }) => {
+    try {
+      const result = await client.getAclPolicy(name);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "list_acl_tokens",
+  "List ACL tokens (AccessorIDs only — secrets are not returned). Requires a management token.",
+  {},
+  async () => {
+    try {
+      const result = await client.listAclTokens();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "get_acl_token_self",
+  "Show the ACL token currently in use by this MCP server (type, policies, roles, expiration).",
+  {},
+  async () => {
+    try {
+      const result = await client.getAclTokenSelf();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "list_nodes",
+  "List all Nomad client nodes with status, node pool, datacenter, scheduling eligibility, and drain state.",
+  {},
+  async () => {
+    try {
+      const result = await client.listNodes();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "get_node",
+  "Get detailed status for a single Nomad client node: status, pool, eligibility, resources, detected drivers.",
+  {
+    node_id: z.string().describe("Node ID (full UUID or 8-char prefix)"),
+  },
+  async ({ node_id }) => {
+    try {
+      const result = await client.getNode(node_id);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "list_volumes",
+  "List all CSI volumes registered with Nomad: ID, plugin, access mode, scheduling state, current reader/writer counts.",
+  {},
+  async () => {
+    try {
+      const result = await client.listVolumes();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "volume_status",
+  "Get full status for a single CSI volume: provider, capacity, current allocations attached.",
+  {
+    volume_id: z.string().describe("Volume ID"),
+  },
+  async ({ volume_id }) => {
+    try {
+      const result = await client.getVolumeStatus(volume_id);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  "operator_raft_peers",
+  "Show the current Nomad server raft configuration — which server is leader, voter status, raft protocol version.",
+  {},
+  async () => {
+    try {
+      const result = await client.getRaftPeers();
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

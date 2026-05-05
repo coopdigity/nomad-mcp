@@ -184,4 +184,192 @@ export class NomadClient {
     const text = await res.text();
     return text || "(no log output)";
   }
+
+  async listAclPolicies(): Promise<string> {
+    const res = await this.request("/v1/acl/policies");
+    const policies = (await res.json()) as Array<{ Name: string; Description?: string; ModifyIndex: number }>;
+
+    if (!policies.length) return "No ACL policies found.";
+
+    return policies
+      .map((p) => `${p.Name}${p.Description ? `  — ${p.Description}` : ""}`)
+      .join("\n");
+  }
+
+  async getAclPolicy(name: string): Promise<string> {
+    const res = await this.request(`/v1/acl/policy/${encodeURIComponent(name)}`);
+    const data = (await res.json()) as { Name: string; Description?: string; Rules: string; ModifyIndex: number };
+
+    return [
+      `Name: ${data.Name}`,
+      `Description: ${data.Description ?? "(none)"}`,
+      `ModifyIndex: ${data.ModifyIndex}`,
+      "",
+      "Rules:",
+      data.Rules,
+    ].join("\n");
+  }
+
+  async listAclTokens(): Promise<string> {
+    const res = await this.request("/v1/acl/tokens");
+    const tokens = (await res.json()) as Array<{
+      AccessorID: string;
+      Name: string;
+      Type: string;
+      Policies?: string[];
+      Roles?: Array<{ Name: string }>;
+      Global: boolean;
+    }>;
+
+    if (!tokens.length) return "No ACL tokens found.";
+
+    return tokens
+      .map((t) => {
+        const policies = (t.Policies ?? []).join(",") || "(none)";
+        const roles = (t.Roles ?? []).map((r) => r.Name).join(",") || "(none)";
+        return `${t.AccessorID}  type=${t.Type}  global=${t.Global}  name=${t.Name || "(unnamed)"}  policies=[${policies}]  roles=[${roles}]`;
+      })
+      .join("\n");
+  }
+
+  async getAclTokenSelf(): Promise<string> {
+    const res = await this.request("/v1/acl/token/self");
+    const data = (await res.json()) as Record<string, unknown>;
+
+    return [
+      `AccessorID: ${data.AccessorID}`,
+      `Name: ${data.Name || "(unnamed)"}`,
+      `Type: ${data.Type}`,
+      `Global: ${data.Global}`,
+      `Policies: ${((data.Policies as string[] | undefined) ?? []).join(", ") || "(none)"}`,
+      `Roles: ${((data.Roles as Array<{ Name: string }> | undefined) ?? []).map((r) => r.Name).join(", ") || "(none)"}`,
+      `CreateTime: ${data.CreateTime}`,
+      `ExpirationTime: ${data.ExpirationTime ?? "(never)"}`,
+    ].join("\n");
+  }
+
+  async listNodes(): Promise<string> {
+    const res = await this.request("/v1/nodes");
+    const nodes = (await res.json()) as Array<{
+      ID: string;
+      Name: string;
+      Status: string;
+      Datacenter: string;
+      NodePool?: string;
+      SchedulingEligibility: string;
+      Drain: boolean;
+      Address: string;
+      Version: string;
+    }>;
+
+    if (!nodes.length) return "No nodes found.";
+
+    return nodes
+      .map((n) => {
+        const drain = n.Drain ? " DRAINING" : "";
+        return `${n.ID.slice(0, 8)}  ${n.Name}  pool=${n.NodePool ?? "default"}  dc=${n.Datacenter}  status=${n.Status}  eligible=${n.SchedulingEligibility}${drain}  v${n.Version}  addr=${n.Address}`;
+      })
+      .join("\n");
+  }
+
+  async getNode(nodeId: string): Promise<string> {
+    const res = await this.request(`/v1/node/${encodeURIComponent(nodeId)}`);
+    const data = (await res.json()) as Record<string, unknown>;
+
+    const drivers = (data.Drivers as Record<string, { Detected: boolean; Healthy: boolean }> | undefined) ?? {};
+    const driverList = Object.entries(drivers)
+      .filter(([, d]) => d.Detected)
+      .map(([name, d]) => `${name}${d.Healthy ? "" : "(unhealthy)"}`)
+      .join(", ");
+
+    const resources = data.NodeResources as
+      | { Cpu?: { CpuShares: number }; Memory?: { MemoryMB: number }; Disk?: { DiskMB: number } }
+      | undefined;
+
+    return [
+      `Node: ${data.ID}`,
+      `Name: ${data.Name}`,
+      `Status: ${data.Status}${data.StatusDescription ? ` — ${data.StatusDescription}` : ""}`,
+      `Datacenter: ${data.Datacenter}`,
+      `NodePool: ${data.NodePool ?? "default"}`,
+      `NodeClass: ${data.NodeClass || "(none)"}`,
+      `Address: ${data.Address}  Version: ${data.Version}`,
+      `SchedulingEligibility: ${data.SchedulingEligibility}`,
+      `Drain: ${data.Drain}`,
+      `Resources: cpu=${resources?.Cpu?.CpuShares ?? "?"} memory=${resources?.Memory?.MemoryMB ?? "?"}MB disk=${resources?.Disk?.DiskMB ?? "?"}MB`,
+      `Drivers: ${driverList || "(none detected)"}`,
+    ].join("\n");
+  }
+
+  async listVolumes(): Promise<string> {
+    const res = await this.request("/v1/volumes?type=csi");
+    const vols = (await res.json()) as Array<{
+      ID: string;
+      Name: string;
+      Namespace: string;
+      PluginID: string;
+      AccessMode: string;
+      AttachmentMode: string;
+      Schedulable: boolean;
+      CurrentReaders: number;
+      CurrentWriters: number;
+    }>;
+
+    if (!vols.length) return "No CSI volumes found.";
+
+    return vols
+      .map(
+        (v) =>
+          `${v.ID}  name=${v.Name}  ns=${v.Namespace}  plugin=${v.PluginID}  ${v.AccessMode}/${v.AttachmentMode}  schedulable=${v.Schedulable}  readers=${v.CurrentReaders}  writers=${v.CurrentWriters}`,
+      )
+      .join("\n");
+  }
+
+  async getVolumeStatus(volumeId: string): Promise<string> {
+    const res = await this.request(`/v1/volume/csi/${encodeURIComponent(volumeId)}`);
+    const data = (await res.json()) as Record<string, unknown>;
+
+    const allocs = (data.Allocations as Array<{ ID: string; Name: string; ClientStatus: string }> | undefined) ?? [];
+
+    const lines = [
+      `Volume: ${data.ID}`,
+      `Name: ${data.Name}`,
+      `Namespace: ${data.Namespace}`,
+      `PluginID: ${data.PluginID}`,
+      `Provider: ${data.Provider}`,
+      `AccessMode: ${data.AccessMode}`,
+      `AttachmentMode: ${data.AttachmentMode}`,
+      `Schedulable: ${data.Schedulable}`,
+      `Capacity: ${data.Capacity}`,
+      `Readers: ${data.CurrentReaders}  Writers: ${data.CurrentWriters}`,
+    ];
+
+    if (allocs.length) {
+      lines.push("", "Allocations:");
+      for (const a of allocs) {
+        lines.push(`  ${a.ID.slice(0, 8)}  ${a.Name}  ${a.ClientStatus}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  async getRaftPeers(): Promise<string> {
+    const res = await this.request("/v1/operator/raft/configuration");
+    const data = (await res.json()) as {
+      Servers: Array<{ ID: string; Node: string; Address: string; Leader: boolean; Voter: boolean; RaftProtocol: string }>;
+      Index: number;
+    };
+
+    if (!data.Servers?.length) return "No raft peers found.";
+
+    const lines = [`Raft Index: ${data.Index}`, ""];
+    for (const s of data.Servers) {
+      const tags: string[] = [];
+      if (s.Leader) tags.push("LEADER");
+      if (s.Voter) tags.push("voter");
+      lines.push(`${s.Node}  ${s.Address}  proto=${s.RaftProtocol}  [${tags.join(",")}]`);
+    }
+    return lines.join("\n");
+  }
 }
