@@ -138,8 +138,37 @@ export class NomadClient {
       .join("\n");
   }
 
+  private async resolveAllocId(allocId: string): Promise<string> {
+    if (allocId.length === 36) return allocId;
+    const res = await this.request(`/v1/allocations?prefix=${encodeURIComponent(allocId)}`);
+    const allocs = (await res.json()) as Array<{ ID: string }>;
+    if (allocs.length === 0) {
+      throw new Error(`No allocation found with prefix '${allocId}'.`);
+    }
+    if (allocs.length > 1) {
+      const ids = allocs.map((a) => a.ID.slice(0, 8)).join(", ");
+      throw new Error(`Prefix '${allocId}' is ambiguous; matches: ${ids}.`);
+    }
+    return allocs[0].ID;
+  }
+
+  private async resolveNodeId(nodeId: string): Promise<string> {
+    if (nodeId.length === 36) return nodeId;
+    const res = await this.request(`/v1/nodes?prefix=${encodeURIComponent(nodeId)}`);
+    const nodes = (await res.json()) as Array<{ ID: string }>;
+    if (nodes.length === 0) {
+      throw new Error(`No node found with prefix '${nodeId}'.`);
+    }
+    if (nodes.length > 1) {
+      const ids = nodes.map((n) => n.ID.slice(0, 8)).join(", ");
+      throw new Error(`Prefix '${nodeId}' is ambiguous; matches: ${ids}.`);
+    }
+    return nodes[0].ID;
+  }
+
   async getAllocStatus(allocId: string): Promise<string> {
-    const res = await this.request(`/v1/allocation/${encodeURIComponent(allocId)}`);
+    const fullId = await this.resolveAllocId(allocId);
+    const res = await this.request(`/v1/allocation/${encodeURIComponent(fullId)}`);
     const data = (await res.json()) as Record<string, unknown>;
 
     const lines: string[] = [];
@@ -182,6 +211,7 @@ export class NomadClient {
     origin: "start" | "end" = "end",
     offset = 50000,
   ): Promise<string> {
+    const fullId = await this.resolveAllocId(allocId);
     const params = new URLSearchParams({
       task,
       type,
@@ -189,7 +219,7 @@ export class NomadClient {
       origin,
       offset: String(offset),
     });
-    const res = await this.request(`/v1/client/fs/logs/${encodeURIComponent(allocId)}?${params}`);
+    const res = await this.request(`/v1/client/fs/logs/${encodeURIComponent(fullId)}?${params}`);
     const text = await res.text();
     return text || "(no log output)";
   }
@@ -282,7 +312,8 @@ export class NomadClient {
   }
 
   async getNode(nodeId: string): Promise<string> {
-    const res = await this.request(`/v1/node/${encodeURIComponent(nodeId)}`);
+    const fullId = await this.resolveNodeId(nodeId);
+    const res = await this.request(`/v1/node/${encodeURIComponent(fullId)}`);
     const data = (await res.json()) as Record<string, unknown>;
 
     const drivers = (data.Drivers as Record<string, { Detected: boolean; Healthy: boolean }> | undefined) ?? {};
@@ -363,6 +394,14 @@ export class NomadClient {
     return lines.join("\n");
   }
 
+  async deregisterVolume(volumeId: string, force = false): Promise<string> {
+    const qs = force ? "?force=true" : "";
+    await this.request(`/v1/volume/csi/${encodeURIComponent(volumeId)}${qs}`, {
+      method: "DELETE",
+    });
+    return `Deregistered CSI volume ${volumeId}${force ? " (force)" : ""}.`;
+  }
+
   async registerJobFromHcl(hcl: string): Promise<string> {
     const parseRes = await this.request("/v1/jobs/parse", {
       method: "POST",
@@ -398,12 +437,13 @@ export class NomadClient {
   }
 
   async restartAlloc(allocId: string, taskName?: string): Promise<string> {
+    const fullId = await this.resolveAllocId(allocId);
     const body = taskName ? { TaskName: taskName } : {};
-    await this.request(`/v1/client/allocation/${encodeURIComponent(allocId)}/restart`, {
+    await this.request(`/v1/client/allocation/${encodeURIComponent(fullId)}/restart`, {
       method: "POST",
       body,
     });
-    return `Restart requested for alloc ${allocId.slice(0, 8)}${taskName ? ` (task=${taskName})` : ""}.`;
+    return `Restart requested for alloc ${fullId.slice(0, 8)}${taskName ? ` (task=${taskName})` : ""}.`;
   }
 
   async getRaftPeers(): Promise<string> {

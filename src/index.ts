@@ -227,6 +227,24 @@ server.tool(
 );
 
 server.tool(
+  "deregister_volume",
+  "Deregister a CSI volume from Nomad. Targets the volume by exact ID (no prefix matching). Use force=true only when the volume has stale claims that won't release.",
+  {
+    volume_id: z.string().describe("Volume ID (exact match — no prefix resolution)"),
+    force: z.boolean().optional().default(false).describe("Force deregister even if Nomad believes claims are still attached"),
+  },
+  async ({ volume_id, force }) => {
+    try {
+      const result = await client.deregisterVolume(volume_id, force);
+      return { content: [{ type: "text", text: result }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
   "register_job",
   "Register (or update) a Nomad job from an HCL definition. Equivalent to `nomad job run`. Pass either `path` (preferred) or `hcl`. Original HCL is preserved as the job submission so `nomad job inspect` and the Nomad UI render the source HCL, not the canonicalized JSON.",
   {
